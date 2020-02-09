@@ -1,0 +1,36 @@
+#!/usr/bin/env node
+
+const { execSync: exec } = require("child_process");
+const { chunk, sumBy } = require("lodash");
+
+const parseStatLine = statLine => {
+  return {
+    insertions: Number((/.*?(\d+) insertions.*/.exec(statLine) || [])[1]) || 0,
+    deletions: Number((/.*?(\d+) deletions.*/.exec(statLine) || [])[1]) || 0
+  };
+};
+
+const [repo, start, end] = process.argv.slice(2);
+
+const logCMD = `git log --shortstat --oneline ${start}..${end}`;
+const rawLog = exec(logCMD, { cwd: repo, encoding: "utf-8" });
+const logEntries = chunk(rawLog.trim().split("\n"), 2).map(
+  ([commitLine, statLine]) => ({
+    commit: commitLine.split(" ")[0],
+    ...parseStatLine(statLine)
+  })
+);
+const logEntriesStats = {
+  insertions: sumBy(logEntries, "insertions"),
+  deletions: sumBy(logEntries, "deletions")
+};
+
+const diffCMD = `git diff --shortstat ${start} ${end}`;
+const rawDiff = exec(diffCMD, { cwd: repo, encoding: "utf-8" });
+const diffStats = parseStatLine(rawDiff.trim());
+
+const stability =
+  (diffStats.insertions + diffStats.deletions) /
+  (logEntriesStats.insertions + logEntriesStats.deletions);
+
+console.log({ logEntriesStats, diffStats, stability });
